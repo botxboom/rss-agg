@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/botxboom/rss-agg/internal/database"
 	"github.com/go-chi/chi"
@@ -38,11 +39,17 @@ func main() {
 		log.Fatal("Can't connect to DB")
 	}
 
-	queries := database.New(conn)
+	db := database.New(conn)
 
 	apiCfg := apiConfig{
-		DB: queries,
+		DB: db,
 	}
+
+	go startScraping(
+		db,
+		10,
+		time.Minute,
+	)
 
 	router := chi.NewRouter()
 	router.Use(cors.Handler(cors.Options{
@@ -68,6 +75,8 @@ func main() {
 	v1Router.Post("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerCreateFeedFollow))
 	v1Router.Delete("/feed_follows/{feedFollowId}", apiCfg.middlewareAuth(apiCfg.handleDeleteFeedFollows))
 
+	v1Router.Get("/posts", apiCfg.middlewareAuth(apiCfg.handlerGetPostsForUser))
+
 	router.Mount("/v1", v1Router)
 
 	server := &http.Server{
@@ -76,6 +85,7 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %v", portString)
+
 	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
